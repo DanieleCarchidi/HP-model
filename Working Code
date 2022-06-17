@@ -1,0 +1,170 @@
+import random
+import matplotlib.pyplot as plt
+from matplotlib import cm
+from mpl_toolkits.mplot3d import Axes3D
+import pandas as pd
+import glob
+from PIL import Image, ImageDraw
+
+
+
+
+def PossibleDirections(point):  #a function with the possible directions to choose from, point is in form (x,y,z)
+    directions = [
+        (point[0] + 1, point[1], point[2]),  # right
+        (point[0] - 1, point[1], point[2]),  # left
+        (point[0], point[1] + 1, point[2]),  # forward
+        (point[0], point[1] - 1, point[2]),  # backward
+        (point[0], point[1], point[2] + 1),  # up
+        (point[0], point[1], point[2] - 1)  # down
+    ]
+    return directions
+
+aaseq = 'APTSSSTKKTQLQLEHLLLDLQMILNGINNYKNPKLTRMLTFKFYMPKKATELKHLQCLEEELKP' \
+        'LEEVLNLAQSKNFHLRPRDLISNINVIVLELKGSETTFMCEYADETATIVEFLNRWITFCQSIISTLT '
+
+#IL-2 #short aa sequence to test the model
+
+#aaseq = 'MPNPRPGKPSAPSLALGPSPGASPSWRAAPKASDLLGARGPGGTFQGRDLRGGAHASSSSLNPMPPSQL
+# QLPTLPLVMVAPSGARLGPLPHLQALLQDRPHFMHQLSTVDAHARTPVLQVHPLESPAMISLTPPTTATGVFSLKAR
+# PGLPPGINVASLEWVSREPALLCTFPNPSAPRKDRSVDRAGKDPRPPIPSPDTLCPPSTLSAVPQSSYPLLANGVCK
+# WPGCEKVFEEPEDFLKHCQADHLLDEKGRAQCLLQREMVQSLEQQLVLEKEKLSAMQAHLAGKMALTKASSVASSDK
+# GSCCIVAAGSQGPVVPAWSGPREAPDSLFAVRRHLWGSHGNSTFPEFLHNMDYFKFHNMRPPFTYATLIRWAILEAP
+# EKQRTLNEIYHWFTRMFAFFRNHPATWKNAIRHNLSLHKCFVRVESEKGAVWTVDELEFRKKRSQRPSRCSNPTPGP'
+
+#FOXP3 #sequence where the model should be used for, 3x longer than IL-2
+
+hydrophobicity = { #determines the hydrophobicity, 0 is Hydrophobic, 1 is Polar
+    0 : ['A', 'V', 'L', 'I', 'P', 'F', 'C'],
+    1 : ['G', 'S', 'T', 'N', 'Q', 'M', 'Y', 'W', 'D', 'E', 'H', 'K', 'R']
+}
+
+HP = []
+for i in aaseq: #rewrites the AA sequence as 0 and 1
+    if i in hydrophobicity[0]:
+        HP.append(0)
+    else:
+        HP.append(1)
+
+
+def Random_walk(AminoAcidSequence): #generates a random walk and maps the AA sequence onto the walk, returns
+    # the number of neighbours as well as the coordinates
+    Nsteps = len(aaseq)
+    current_position = (0, 0, 0) #random walk always starts at this position, and is build around it
+    visited_points = [] # saves the coordinates in this list
+    for i in range(Nsteps):
+        visited_points.append(current_position) #adds current position to the list visited_points
+        all_directions = PossibleDirections(current_position) #determines all the positions possible to go using the function implemented above
+        not_visited_directions = [direction for direction in all_directions if direction not in visited_points] #determines the directions that haven't been used yet
+        current_position = random.choice(not_visited_directions) #makes a random choice
+
+        if current_position in visited_points: #checks again if the position is already used, deletes the last 10 positions if so and resets the count
+            del visited_points[-10:]
+            Nsteps -= 10
+
+    a = len(visited_points)
+    points = []
+
+    if a == len(aaseq): #checks if random walk is as long as AA sequence, if so, adds the coordinates to a new list
+        for i in range(a):
+            points.append(visited_points[i])
+
+    mat = [[0] * 2 for i in range(len(HP))]
+    k = 0
+    for i, j in zip(points, HP): #add the 0 or 1 to th coordinates
+        mat[k][0] = i
+        mat[k][1] = j
+        k += 1
+
+    value = 0
+    excluded_neighbours = []
+    for i in range(1, len(mat) - 3): #checks for possible neighbours in all directions
+        for j in range(i + 3, len(mat)):
+            if mat[i][0][0] == (mat[j][0][0] + 1 or mat[j][0][0] - 1) or mat[i][0][1] == (
+                    mat[j][0][1] + 1 or mat[j][0][1] - 1) or mat[i][0][2] == (mat[j][0][2] + 1 or mat[j][0][2] - 1): #removes the closest neighbours on the lattice
+                excluded_neighbours.append(mat[i][0][0])
+                if (mat[j][0][0] + 1 or mat[j][0][0] - 1 or mat[j][0][1] + 1 or mat[j][0][1] - 1 or mat[j][0][2] + 1 or
+                    mat[j][0][2] - 1) not in excluded_neighbours: #checks if at later position the AA is in close contact
+                    if mat[i][1] == 0 and mat[j][1] == 0: #if both are hydrophobic, add 1
+                        value += 1
+
+    return value, mat
+
+optim_steps = 10
+configurations = []
+max_config = []
+config_2 = []
+best_config = []
+
+for i in range(optim_steps): #performs the random walk x times, saves all random walks in a list
+    configurations.append(Random_walk(aaseq))
+
+max_config.append(max(configurations))
+config_2.append(max_config[0][1])
+
+for i in range(len(aaseq)):
+    best_config.append(config_2[0][i][0]) #saves coordinates from best configuration
+
+X_coor = []
+Y_coor = []
+Z_coor = []
+Color_Number = []
+Color_color = []
+colour = {
+    'red': '0', #hydrophobic
+    'blue': '1' #polar
+}
+
+#code below saves the individual coordinates and a adds a colour to the AA
+for i in range(len(aaseq)):
+    X_coor.append(best_config[i][0])
+for i in range(len(aaseq)):
+    Y_coor.append(best_config[i][1])
+for i in range(len(aaseq)):
+    Z_coor.append(best_config[i][2])
+for i in range(len(aaseq)):
+    Color_Number.append(config_2[0][i][1])
+for i in Color_Number: #rewrites the AA as 0 and 1
+    if i == 0:
+        Color_color.append('red')
+    else:
+        Color_color.append('blue')
+
+data = pd.DataFrame({'X':X_coor,
+                     'Y':Y_coor,
+                    'Z':Z_coor,
+                    'Color': Color_color})
+
+#plots the configuration
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+xp, yp, zp = zip(*best_config)
+p3d = ax.scatter(xp, yp, zp, s = 20, color = Color_color)
+ax.plot3D(xp, yp, zp, 'black')
+plt.show()
+
+#if the number of H-H contacts is more than 2000, the configuration should also be saved and transformed into a GIF
+number_neighbour = int(str(max_config[0][0]))
+print(number_neighbour)
+if number_neighbour > 2000:
+    for angle in range(0, 360, 3):
+        angle2 = angle/1000 #order of picture for GIF: 1,10,11,12,13...,2,20,21,22..., dividing the angle by 100 gets rid of this problem
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot(xp, yp, zp, linestyle='-', linewidth=1)
+        ax.scatter(xp, yp, zp, color=Color_color, marker='o', s=50)
+        ax.view_init(10, angle)
+        plt.savefig('Image2_' + str(angle2) + '.png', dpi=200)
+        plt.show()
+        print(angle)
+        fig = plt.close()
+
+#code below converts the saved pictures to a GIF
+frames = []
+imgs = glob.glob('C:/Users/Daniele Carchidi/PycharmProjects/pythonProject1/Image2_*.png')
+for i in imgs:
+    new_frame = Image.open(i)
+    frames.append(new_frame)
+    print(i)
+
+frames[0].save('png_to_gif.gif', format = 'GIF', append_images = frames[1:], save_all = True, duration = 100, loop = 0)
